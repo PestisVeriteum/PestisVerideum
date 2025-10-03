@@ -1,6 +1,6 @@
-pandas
-scikit-learn
-streamlit
-joblib
 torch
 transformers
+pandas
+streamlit
+datasets
+scikit-learn
