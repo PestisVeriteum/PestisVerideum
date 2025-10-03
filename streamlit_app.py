@@ -1,44 +1,106 @@
+# =============================================
+# 🦠 PestisVeriteum - Fake News Detector (Streamlit)
+# Stylish UI + Login + Live Predictions
+# =============================================
+
 import streamlit as st
-import joblib
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+from datetime import datetime
 
-# Load your saved model and vectorizer
-@st.cache_resource
-def load_model():
-    model = joblib.load("fake_news_model.pkl")
-    vectorizer = joblib.load("vectorizer.pkl")
-    return model, vectorizer
+# -------------------------
+# 1️⃣ Login Setup (simple version)
+# -------------------------
+def check_login(username, password):
+    # In a real app, use a secure database!
+    # Example credentials
+    users = {"admin": "pass123", "user": "pestis2025"}
+    return username in users and users[username] == password
 
-model, vectorizer = load_model()
-
-# Streamlit app UI
-st.set_page_config(page_title="Pestis Veriteum - Fake News Detector", page_icon="📰", layout="centered")
-
-st.title("📰 Pestis Veriteum")
-st.subheader("Your AI-powered Fake News Detector")
-
-st.markdown(
-    "Type or paste a news headline/statement below, and the model will predict "
-    "whether it's **likely true** or **fake**."
+# -------------------------
+# 2️⃣ Streamlit Page config
+# -------------------------
+st.set_page_config(
+    page_title="PestisVeriteum",
+    page_icon="🦠",
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
-# Text input
-user_input = st.text_area("Enter a news headline or statement:", "")
+# -------------------------
+# 3️⃣ Sidebar login
+# -------------------------
+st.sidebar.image("https://i.imgur.com/0S4gHln.png", width=100)  # Logo
+st.sidebar.title("Login")
+username = st.sidebar.text_input("Username")
+password = st.sidebar.text_input("Password", type="password")
+login_button = st.sidebar.button("Login")
 
-if st.button("Analyze"):
-    if user_input.strip() == "":
-        st.warning("⚠️ Please enter some text before analyzing.")
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if login_button:
+    if check_login(username, password):
+        st.session_state.authenticated = True
+        st.sidebar.success("Logged in successfully!")
     else:
-        # Transform input and predict
-        X = vectorizer.transform([user_input])
-        prediction = model.predict(X)[0]
-        proba = model.predict_proba(X)[0]
+        st.session_state.authenticated = False
+        st.sidebar.error("Incorrect username or password!")
 
-        # Display result
-        if prediction == 1:
-            st.success(f"✅ This looks **TRUE** with {proba[1]*100:.2f}% confidence.")
+# -------------------------
+# 4️⃣ If authenticated, show main app
+# -------------------------
+if st.session_state.authenticated:
+    st.markdown("<h1 style='color: darkred;'>🦠 PestisVeriteum</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:gray;'>Type a claim and get its truth label instantly!</p>", unsafe_allow_html=True)
+    
+    # Optional: Live time
+    st.markdown(f"<p style='color:blue;'>Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>", unsafe_allow_html=True)
+
+    # -------------------------
+    # 5️⃣ Load Model & Tokenizer
+    # -------------------------
+    @st.cache_resource(show_spinner=False)
+    def load_model():
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        tokenizer = BertTokenizer.from_pretrained("./fakenews_model")
+        model = BertForSequenceClassification.from_pretrained("./fakenews_model").to(device)
+        return tokenizer, model, device
+
+    tokenizer, model, device = load_model()
+
+    # Label mapping
+    label_mapping = {0: 'half-true', 1:'mostly-true', 2:'false', 3:'true', 4:'barely-true', 5:'pants-fire'}
+
+    # -------------------------
+    # 6️⃣ Input & Prediction
+    # -------------------------
+    user_input = st.text_area("Enter a claim here:", height=120)
+
+    if st.button("Predict"):
+        if user_input.strip() == "":
+            st.warning("Please type a claim before clicking Predict.")
         else:
-            st.error(f"❌ This looks **FAKE** with {proba[0]*100:.2f}% confidence.")
+            # Prediction
+            model.eval()
+            inputs = tokenizer(user_input, return_tensors="pt", padding="max_length", truncation=True, max_length=128).to(device)
+            with torch.no_grad():
+                outputs = model(**inputs)
+            pred_idx = torch.argmax(outputs.logits, dim=1).item()
+            prediction = label_mapping[pred_idx]
 
-        # Show probability breakdown
-        st.progress(float(proba[1]))
-        st.write(f"Truth Score: {proba[1]*100:.2f}%")
+            # Show result with nice styling
+            st.markdown(f"<h2 style='color:green;'>Prediction: {prediction.upper()}</h2>", unsafe_allow_html=True)
+
+            # Optional: show raw logits
+            if st.checkbox("Show raw logits"):
+                st.write(outputs.logits.cpu().numpy())
+
+    # -------------------------
+    # 7️⃣ Footer
+    # -------------------------
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("<p style='color:gray;'>Powered by PestisVeriteum AI - 2025</p>", unsafe_allow_html=True)
+
+else:
+    st.info("Please log in using the sidebar to access PestisVeriteum.")
