@@ -60,12 +60,41 @@ if st.session_state.authenticated:
     # -------------------------
     # 5️⃣ Load Model & Tokenizer
     # -------------------------
-    @st.cache_resource(show_spinner=False)
-    def load_model():
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        tokenizer = BertTokenizer.from_pretrained("./fakenews_model")
-        model = BertForSequenceClassification.from_pretrained("./fakenews_model").to(device)
-        return tokenizer, model, device
+    import os
+import streamlit as st
+from transformers import BertTokenizer, BertForSequenceClassification
+import torch
+
+@st.cache_resource(show_spinner=False)
+def load_model():
+    """
+    Loads the BERT model and tokenizer safely with error handling.
+    Works both locally and on Streamlit Cloud.
+    """
+
+    model_path = "./fakenews_model"
+
+    # --- 1️⃣ Check if model exists locally ---
+    if not os.path.exists(model_path) or not os.path.isdir(model_path):
+        st.warning("Local model not found. Downloading from HuggingFace...")
+        model_path = "bert-base-uncased"  # fallback
+
+    try:
+        tokenizer = BertTokenizer.from_pretrained(model_path)
+        model = BertForSequenceClassification.from_pretrained(model_path)
+    except Exception as e:
+        # --- 2️⃣ Fallback if local model folder is corrupted ---
+        st.error(f"Model loading failed: {e}. Trying to re-download model...")
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
+
+    # --- 3️⃣ Send model to correct device ---
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    st.success("✅ Model successfully loaded and ready.")
+    return tokenizer, model, device
+
 
     tokenizer, model, device = load_model()
 
