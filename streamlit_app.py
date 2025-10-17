@@ -5,6 +5,7 @@
 
 import streamlit as st
 import torch
+import os
 from transformers import BertTokenizer, BertForSequenceClassification
 from datetime import datetime
 
@@ -13,9 +14,9 @@ from datetime import datetime
 # -------------------------
 def check_login(username, password):
     # In a real app, use a secure database!
-    # Example credentials
     users = {"admin": "pass123", "user": "pestis2025"}
     return username in users and users[username] == password
+
 
 # -------------------------
 # 2️⃣ Streamlit Page config
@@ -27,11 +28,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # -------------------------
 # 3️⃣ Sidebar login
 # -------------------------
 st.sidebar.image("https://i.imgur.com/0S4gHln.png", width=100)  # Logo
 st.sidebar.title("Login")
+
 username = st.sidebar.text_input("Username")
 password = st.sidebar.text_input("Password", type="password")
 login_button = st.sidebar.button("Login")
@@ -47,24 +50,10 @@ if login_button:
         st.session_state.authenticated = False
         st.sidebar.error("Incorrect username or password!")
 
-# -------------------------
-# 4️⃣ If authenticated, show main app
-# -------------------------
-if st.session_state.authenticated:
-    st.markdown("<h1 style='color: darkred;'>🦠 PestisVeriteum</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:gray;'>Type a claim and get its truth label instantly!</p>", unsafe_allow_html=True)
-    
-    # Optional: Live time
-    st.markdown(f"<p style='color:blue;'>Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>", unsafe_allow_html=True)
 
-    # -------------------------
-    # 5️⃣ Load Model & Tokenizer
-    # -------------------------
-    import os
-import streamlit as st
-from transformers import BertTokenizer, BertForSequenceClassification
-import torch
-
+# -------------------------
+# 4️⃣ Load Model & Tokenizer
+# -------------------------
 @st.cache_resource(show_spinner=False)
 def load_model():
     """
@@ -96,10 +85,27 @@ def load_model():
     return tokenizer, model, device
 
 
+# -------------------------
+# 5️⃣ If authenticated, show main app
+# -------------------------
+if st.session_state.authenticated:
+    st.markdown("<h1 style='color: darkred;'>🦠 PestisVeriteum</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:gray;'>Type a claim and get its truth label instantly!</p>", unsafe_allow_html=True)
+
+    st.markdown(f"<p style='color:blue;'>Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>", unsafe_allow_html=True)
+
+    # Load model
     tokenizer, model, device = load_model()
 
     # Label mapping
-    label_mapping = {0: 'half-true', 1:'mostly-true', 2:'false', 3:'true', 4:'barely-true', 5:'pants-fire'}
+    label_mapping = {
+        0: 'half-true',
+        1: 'mostly-true',
+        2: 'false',
+        3: 'true',
+        4: 'barely-true',
+        5: 'pants-fire'
+    }
 
     # -------------------------
     # 6️⃣ Input & Prediction
@@ -133,3 +139,4 @@ def load_model():
 
 else:
     st.info("Please log in using the sidebar to access PestisVeriteum.")
+
