@@ -9,6 +9,8 @@ import sqlite3
 import hashlib
 from transformers import BertTokenizer, BertForSequenceClassification
 from datetime import datetime
+from verifier.factcheck import verify_claim
+
 
 # ------------------------------------------------------
 # DATABASE SETUP
