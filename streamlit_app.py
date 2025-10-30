@@ -7,10 +7,8 @@ import torch
 import os
 import sqlite3
 import hashlib
-from transformers import BertTokenizer, BertForSequenceClassification
 from datetime import datetime
-from verifier.factcheck import verify_claim
-
+from verifier.factcheck import verify_claim  # <-- Real fact verifier imported here
 
 # ------------------------------------------------------
 # DATABASE SETUP
@@ -41,27 +39,6 @@ def verify_password(password, hashed):
     return hash_password(password) == hashed
 
 # ------------------------------------------------------
-# MODEL LOADING
-# ------------------------------------------------------
-@st.cache_resource(show_spinner=False)
-def load_model():
-    model_path = "./fakenews_model"
-    if not os.path.exists(model_path):
-        st.warning("⚠️ Local model not found, downloading fallback model...")
-        model_path = "bert-base-uncased"
-
-    try:
-        tokenizer = BertTokenizer.from_pretrained(model_path)
-        model = BertForSequenceClassification.from_pretrained(model_path)
-    except:
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        model = BertForSequenceClassification.from_pretrained("bert-base-uncased")
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    return tokenizer, model, device
-
-# ------------------------------------------------------
 # STYLING (Glassmorphism + Clean Design)
 # ------------------------------------------------------
 st.set_page_config(page_title="PestisVeriteum", page_icon="🦠", layout="centered")
@@ -73,19 +50,12 @@ st.markdown("""
     color: #f5f5f5;
     font-family: 'Segoe UI', sans-serif;
 }
-
-h1, h2, h3 {
-    color: #ff6b6b;
-    text-align: center;
-    letter-spacing: 1px;
-}
-
+h1, h2, h3 { color: #ff6b6b; text-align: center; letter-spacing: 1px; }
 div[data-testid="stSidebar"] {
     background: rgba(5, 10, 25, 0.85);
     backdrop-filter: blur(12px);
     border-right: 1px solid rgba(255,255,255,0.1);
 }
-
 .stButton>button {
     background: linear-gradient(90deg, #ff5a5a, #ff7b00);
     color: white;
@@ -99,13 +69,11 @@ div[data-testid="stSidebar"] {
     transform: scale(1.03);
     background: linear-gradient(90deg, #ff7b00, #ff5a5a);
 }
-
 .stTextInput>div>div>input, textarea {
     background: rgba(255,255,255,0.08) !important;
     border-radius: 10px !important;
     color: white !important;
 }
-
 .card {
     background: rgba(255,255,255,0.05);
     backdrop-filter: blur(12px);
@@ -114,13 +82,7 @@ div[data-testid="stSidebar"] {
     margin-top: 1em;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
-
-footer {
-    text-align: center;
-    color: #aaa;
-    padding-top: 10px;
-    font-size: 0.9em;
-}
+footer { text-align: center; color: #aaa; padding-top: 10px; font-size: 0.9em; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,7 +147,7 @@ else:
         st.markdown("""
         <div class='card' style='text-align:center;'>
         <p>The next-generation fake news detection AI.<br>
-        Enter any claim, and PestisVeriteum will instantly analyze its truthfulness using a fine-tuned BERT model.<br><br>
+        Enter any claim, and PestisVeriteum will instantly analyze its truthfulness using a fine-tuned NLI model.<br><br>
         🧠 <b>Trusted AI, built for truth.</b>
         </p>
         </div>
@@ -193,28 +155,23 @@ else:
 
     elif page == "🧪 Detector":
         st.markdown("<h1>Fake News Detector</h1>", unsafe_allow_html=True)
-        tokenizer, model, device = load_model()
-
-        label_mapping = {
-            0: 'half-true', 1: 'mostly-true', 2: 'false',
-            3: 'true', 4: 'barely-true', 5: 'pants-fire'
-        }
-
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         claim = st.text_area("Enter your claim:", height=120)
+
         if st.button("🔍 Analyze"):
             if claim.strip() == "":
                 st.warning("Please type something first.")
             else:
-                model.eval()
-                inputs = tokenizer(claim, return_tensors="pt", padding="max_length",
-                                   truncation=True, max_length=128).to(device)
-                with torch.no_grad():
-                    outputs = model(**inputs)
-                pred_idx = torch.argmax(outputs.logits, dim=1).item()
-                label = label_mapping[pred_idx]
+                with st.spinner("Analyzing claim using AI..."):
+                    result = verify_claim(claim)
 
-                st.markdown(f"<h3 style='color:lime;text-align:center;'>✅ Prediction: {label.upper()}</h3>", unsafe_allow_html=True)
+                label = result["label"]
+                confidence = result["confidence"]
+
+                color = "lime" if label == "True" else ("red" if label == "False" else "orange")
+
+                st.markdown(f"<h3 style='color:{color};text-align:center;'>✅ Result: {label}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align:center;'>Confidence: {confidence:.2f}</p>", unsafe_allow_html=True)
 
                 conn.execute("INSERT INTO predictions VALUES (?, ?, ?, ?)",
                              (st.session_state.user, claim, label, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
@@ -226,11 +183,10 @@ else:
         st.markdown("""
         <div class='card'>
         <p>PestisVeriteum is a deep-learning-powered truth verification system that uses 
-        <b>BERT (Bidirectional Encoder Representations from Transformers)</b> to classify 
-        claims across multiple truthfulness levels.</p>
+        <b>Natural Language Inference (NLI)</b> and <b>Transformer-based reasoning</b> to verify factual accuracy.</p>
         <ul>
             <li><b>Mission:</b> Combat misinformation with AI.</li>
-            <li><b>Technology:</b> Transformer-based Natural Language Understanding.</li>
+            <li><b>Technology:</b> RoBERTa-large trained on FEVER & MNLI datasets.</li>
             <li><b>Built by:</b> PestisVeriteum Research Lab, 2025.</li>
         </ul>
         </div>
