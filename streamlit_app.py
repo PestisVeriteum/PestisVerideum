@@ -1,8 +1,5 @@
 # =============================================
-# 🦠 PestisVeriteum - AI Fake News Verification System
-# =============================================
-# Revamped version (2025)
-# Features: Real AI reasoning, database, dataset fact-checking, modern UI
+# 🧠 PestisVeriteum - Truth Verification AI (Smart Web + MNLI)
 # =============================================
 
 import streamlit as st
@@ -10,24 +7,15 @@ import torch
 import os
 import sqlite3
 import hashlib
-import pandas as pd
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from sentence_transformers import SentenceTransformer, util
+from transformers import pipeline
+from googlesearch import search  # lightweight web info fetch
+import requests
+from bs4 import BeautifulSoup
 
-# =============================================
-# INITIAL SETUP
-# =============================================
-
-st.set_page_config(
-    page_title="PestisVeriteum",
-    page_icon="🧬",
-    layout="wide"
-)
-
-# =============================================
+# ------------------------------------------------------
 # DATABASE SETUP
-# =============================================
+# ------------------------------------------------------
 def init_db():
     conn = sqlite3.connect("pestisveriteum.db")
     c = conn.cursor()
@@ -37,231 +25,231 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS predictions (
                     username TEXT,
                     claim TEXT,
-                    result TEXT,
-                    confidence REAL,
+                    label TEXT,
                     date TEXT)''')
     conn.commit()
     return conn
 
 conn = init_db()
 
-# =============================================
-# PASSWORD SYSTEM
-# =============================================
+# ------------------------------------------------------
+# PASSWORD HASHING
+# ------------------------------------------------------
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def verify_password(password, hashed):
     return hash_password(password) == hashed
 
-# =============================================
-# LOAD MODELS
-# =============================================
-@st.cache_resource(show_spinner=False)
-def load_models():
-    nli_model = AutoModelForSequenceClassification.from_pretrained("roberta-large-mnli")
-    nli_tokenizer = AutoTokenizer.from_pretrained("roberta-large-mnli")
-    embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    return nli_tokenizer, nli_model, embed_model
+# ------------------------------------------------------
+# MODEL SETUP
+# ------------------------------------------------------
+@st.cache_resource
+def load_model():
+    model_id = "facebook/bart-large-mnli"
+    return pipeline("zero-shot-classification", model=model_id)
 
-nli_tokenizer, nli_model, embed_model = load_models()
+verifier = load_model()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-nli_model.to(device)
+# ------------------------------------------------------
+# WEB INFO FETCH
+# ------------------------------------------------------
+def fetch_web_summary(query, max_results=3):
+    """Fetch short factual snippets from the web."""
+    snippets = []
+    try:
+        for url in search(query, num_results=max_results):
+            try:
+                page = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                soup = BeautifulSoup(page.text, "html.parser")
+                text = ' '.join(p.text for p in soup.find_all('p'))
+                snippets.append(text[:500])
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return " ".join(snippets) if snippets else ""
 
-# =============================================
-# LOAD FACTUAL DATASET (SIMULATED)
-# =============================================
-@st.cache_data(show_spinner=False)
-def load_dataset():
-    data = {
-        "fact": [
-            "The Earth revolves around the Sun.",
-            "Water boils at 100 degrees Celsius at sea level.",
-            "Albert Einstein developed the theory of relativity.",
-            "COVID-19 vaccines reduce the risk of severe illness.",
-            "The Moon has no atmosphere."
-        ]
-    }
-    df = pd.DataFrame(data)
-    df["embedding"] = df["fact"].apply(lambda x: embed_model.encode(x, convert_to_tensor=True))
-    return df
-
-dataset = load_dataset()
-
-# =============================================
-# FACT VERIFICATION FUNCTION
-# =============================================
+# ------------------------------------------------------
+# CLAIM VERIFICATION
+# ------------------------------------------------------
 def verify_claim(claim):
-    # Step 1: Find most similar fact from dataset
-    claim_embedding = embed_model.encode(claim, convert_to_tensor=True)
-    similarities = [float(util.pytorch_cos_sim(claim_embedding, e)) for e in dataset["embedding"]]
-    best_match_idx = int(torch.tensor(similarities).argmax())
-    best_fact = dataset.iloc[best_match_idx]["fact"]
-    similarity_score = similarities[best_match_idx]
+    evidence = fetch_web_summary(claim)
+    context = evidence if evidence else "No strong evidence found online."
 
-    # Step 2: Use NLI to check entailment between claim and fact
-    inputs = nli_tokenizer.encode_plus(claim, best_fact, return_tensors="pt", truncation=True, max_length=256).to(device)
-    with torch.no_grad():
-        outputs = nli_model(**inputs)
-    probs = torch.softmax(outputs.logits, dim=1)
-    label_id = torch.argmax(probs, dim=1).item()
-    confidence = probs[0][label_id].item()
+    res = verifier(
+        f"Claim: {claim}. Based on evidence: {context}",
+        candidate_labels=["true", "false", "unclear"]
+    )
 
-    labels = ["Contradiction", "Neutral", "Entailment"]
-    label = labels[label_id]
+    label = res["labels"][0].capitalize()
+    confidence = res["scores"][0]
+    return {"label": label, "confidence": confidence, "evidence": context[:800]}
 
-    # Step 3: Simplify interpretation
-    if label == "Entailment" and confidence > 0.75:
-        verdict = "True"
-    elif label == "Contradiction" and confidence > 0.75:
-        verdict = "False"
-    else:
-        verdict = "Unclear"
-
-    return {
-        "verdict": verdict,
-        "confidence": confidence,
-        "reference": best_fact
-    }
-
-# =============================================
+# ------------------------------------------------------
 # STYLING
-# =============================================
+# ------------------------------------------------------
+st.set_page_config(page_title="PestisVeriteum", page_icon="🧠", layout="centered")
+
 st.markdown("""
 <style>
 .stApp {
-    background: radial-gradient(circle at 20% 20%, #0d1b2a, #000814);
-    color: #f8f9fa;
-    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #03071e, #0b1225, #1a1a2e);
+    color: #e8eaed;
+    font-family: 'Segoe UI', sans-serif;
 }
-h1, h2, h3 { color: #ffb703; text-align: center; }
-.card {
-    background: rgba(255,255,255,0.08);
-    backdrop-filter: blur(16px);
-    border-radius: 18px;
-    padding: 1.5em;
-    box-shadow: 0 4px 25px rgba(0,0,0,0.3);
-    margin-top: 1.2em;
+h1, h2, h3 {
+    color: #ff6b6b;
+    text-align: center;
 }
 .stButton>button {
-    background: linear-gradient(90deg, #ff7b00, #ffb703);
+    background: linear-gradient(90deg, #ff5a5a, #ff7b00);
     color: white;
-    border-radius: 10px;
+    border-radius: 12px;
+    padding: 0.6em 1.4em;
     border: none;
-    font-weight: bold;
+    font-weight: 600;
+    transition: all 0.3s ease-in-out;
 }
-.stTextInput>div>div>input, textarea {
-    background: rgba(255,255,255,0.1) !important;
-    border-radius: 10px !important;
-    color: white !important;
+.stButton>button:hover {
+    transform: scale(1.05);
+    background: linear-gradient(90deg, #ff7b00, #ff5a5a);
 }
-footer { text-align: center; margin-top: 40px; color: #aaa; }
+.card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 15px;
+    padding: 1.5em;
+    margin-top: 1em;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# =============================================
+# ------------------------------------------------------
 # SIDEBAR NAVIGATION
-# =============================================
-st.sidebar.image("https://i.imgur.com/BGpjhAh.png", width=140)  # new logo
-st.sidebar.title("PestisVeriteum")
-page = st.sidebar.radio("Navigate", ["🏠 Home", "🧠 Detector", "📜 History", "ℹ️ About"])
+# ------------------------------------------------------
+st.sidebar.image("https://i.imgur.com/0S4gHln.png", width=120)
+st.sidebar.title("🧭 Navigation")
+page = st.sidebar.radio("Go to", ["🏠 Home", "🧪 Detector", "📊 History", "ℹ️ About", "📬 Contact"])
 
-# =============================================
-# LOGIN / SIGNUP
-# =============================================
+# ------------------------------------------------------
+# AUTH SYSTEM
+# ------------------------------------------------------
 if "user" not in st.session_state:
     st.session_state.user = None
 
 if st.session_state.user is None:
-    st.markdown("<h1>🧬 PestisVeriteum</h1>", unsafe_allow_html=True)
-    tabs = st.tabs(["🔐 Login", "🆕 Register"])
+    st.markdown("<h1>🧠 PestisVeriteum</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;color:#bfcde0;'>Next-Generation Fake News Detection AI</p>", unsafe_allow_html=True)
+    tabs = st.tabs(["🔐 Login", "🆕 Sign Up"])
 
     with tabs[0]:
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        username = st.text_input("Username", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
         if st.button("Login"):
             c = conn.cursor()
             c.execute("SELECT password_hash FROM users WHERE username=?", (username,))
             row = c.fetchone()
             if row and verify_password(password, row[0]):
                 st.session_state.user = username
-                st.success("Welcome back!")
+                st.success(f"Welcome back, {username}!")
                 st.experimental_rerun()
             else:
-                st.error("Invalid credentials.")
+                st.error("Invalid username or password.")
 
     with tabs[1]:
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type="password")
+        new_user = st.text_input("New Username", key="new_user")
+        new_pass = st.text_input("New Password", type="password", key="new_pass")
         if st.button("Sign Up"):
-            try:
-                conn.execute("INSERT INTO users VALUES (?, ?)", (new_user, hash_password(new_pass)))
-                conn.commit()
-                st.success("Account created! Log in now.")
-            except:
-                st.error("User already exists.")
+            if len(new_user) < 3 or len(new_pass) < 6:
+                st.warning("Username ≥ 3 chars, Password ≥ 6 chars.")
+            else:
+                try:
+                    conn.execute("INSERT INTO users VALUES (?, ?)", (new_user, hash_password(new_pass)))
+                    conn.commit()
+                    st.success("✅ Account created! You can now log in.")
+                except:
+                    st.error("❌ Username already exists.")
 
 else:
-    st.sidebar.success(f"Logged in as {st.session_state.user}")
+    st.sidebar.success(f"👤 Logged in as: {st.session_state.user}")
     if st.sidebar.button("Logout"):
         st.session_state.user = None
         st.experimental_rerun()
 
-    # =============================================
-    # MAIN PAGES
-    # =============================================
+    # ------------------------------------------------------
+    # PAGES
+    # ------------------------------------------------------
     if page == "🏠 Home":
+        st.markdown("<h1>Welcome to PestisVeriteum</h1>", unsafe_allow_html=True)
         st.markdown("""
-        <h1>Welcome to PestisVeriteum</h1>
-        <div class='card'>
-        <p>AI-powered fake news verification system combining factual retrieval, 
-        NLI reasoning, and deep semantic similarity search.</p>
-        <p>🧠 Built for truth. Designed for impact.</p>
+        <div class='card' style='text-align:center;'>
+        <p><b>PestisVeriteum</b> is the AI built to detect misinformation using modern Natural Language Reasoning and live web analysis.<br><br>
+        🧠 <b>Built for Truth. Powered by Intelligence.</b></p>
         </div>
         """, unsafe_allow_html=True)
 
-    elif page == "🧠 Detector":
+    elif page == "🧪 Detector":
         st.markdown("<h1>Fake News Detector</h1>", unsafe_allow_html=True)
-        claim = st.text_area("Enter a claim to verify:", height=120)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        claim = st.text_area("Enter your claim:", height=120)
 
-        if st.button("Analyze 🔍"):
-            if not claim.strip():
-                st.warning("Please enter a claim.")
+        if st.button("🔍 Analyze"):
+            if claim.strip() == "":
+                st.warning("Please type something first.")
             else:
-                with st.spinner("Verifying with AI..."):
+                with st.spinner("Analyzing claim using AI and the web..."):
                     result = verify_claim(claim)
 
-                color = "lime" if result["verdict"] == "True" else ("red" if result["verdict"] == "False" else "orange")
+                label = result["label"]
+                confidence = result["confidence"]
+                evidence = result["evidence"]
 
-                st.markdown(f"<h3 style='color:{color};text-align:center;'>Result: {result['verdict']}</h3>", unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align:center;'>Confidence: {result['confidence']*100:.1f}%</p>", unsafe_allow_html=True)
-                st.info(f"Closest factual match: **{result['reference']}**")
+                color = "lime" if label == "True" else ("red" if label == "False" else "orange")
+                st.markdown(f"<h3 style='color:{color};text-align:center;'>🧠 Result: {label}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align:center;'>Confidence: {confidence:.2f}</p>", unsafe_allow_html=True)
+                with st.expander("🔎 Web Evidence"):
+                    st.write(evidence)
 
-                conn.execute("INSERT INTO predictions VALUES (?, ?, ?, ?, ?)",
-                             (st.session_state.user, claim, result["verdict"], result["confidence"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.execute("INSERT INTO predictions VALUES (?, ?, ?, ?)",
+                             (st.session_state.user, claim, label, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 conn.commit()
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    elif page == "📜 History":
-        st.markdown("<h1>History</h1>", unsafe_allow_html=True)
-        df = pd.read_sql_query("SELECT * FROM predictions WHERE username=?", conn, params=(st.session_state.user,))
-        if df.empty:
-            st.info("No records yet.")
+    elif page == "📊 History":
+        st.markdown("<h1>Your Past Verifications</h1>", unsafe_allow_html=True)
+        c = conn.cursor()
+        c.execute("SELECT claim, label, date FROM predictions WHERE username=?", (st.session_state.user,))
+        data = c.fetchall()
+        if not data:
+            st.info("No history yet.")
         else:
-            st.dataframe(df)
+            for claim, label, date in data[::-1]:
+                st.markdown(f"🕒 **{date}** — `{label}`\n> {claim}")
 
     elif page == "ℹ️ About":
+        st.markdown("<h1>About PestisVeriteum</h1>", unsafe_allow_html=True)
         st.markdown("""
-        <h1>About PestisVeriteum</h1>
         <div class='card'>
-        <p>PestisVeriteum verifies claims using transformer-based reasoning and real-world datasets. 
-        The model compares your input with known facts and performs entailment analysis to decide truthfulness.</p>
-        <ul>
-        <li><b>Tech Stack:</b> RoBERTa-MNLI, Sentence Transformers</li>
-        <li><b>Dataset:</b> FEVER + curated scientific facts</li>
-        <li><b>Goal:</b> AI-driven fight against misinformation.</li>
-        </ul>
+        <p>PestisVeriteum is a cutting-edge truth verification engine powered by <b>BART-Large-MNLI</b> for natural language inference and <b>real-time web evidence</b> retrieval.</p>
+        <p>Developed by Gaya Tahir © 2025 — <b>Fighting misinformation with AI and science.</b></p>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("<footer>© 2025 PestisVeriteum — AI for Truth.</footer>", unsafe_allow_html=True)
+    elif page == "📬 Contact":
+        st.markdown("<h1>Contact Us</h1>", unsafe_allow_html=True)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        name = st.text_input("Your Name")
+        email = st.text_input("Your Email")
+        msg = st.text_area("Your Message")
+        if st.button("Send Message"):
+            if not msg.strip():
+                st.warning("Please write a message.")
+            else:
+                conn.execute("INSERT INTO predictions VALUES (?, ?, ?, ?)",
+                             (name or "Anonymous", email, msg, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
+                st.success("✅ Message sent successfully!")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<footer style='text-align:center;color:#777;'>© 2025 PestisVeriteum. All rights reserved.</footer>", unsafe_allow_html=True)
