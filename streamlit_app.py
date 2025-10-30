@@ -1,5 +1,5 @@
 # =============================================
-# 🦠 PestisVeriteum - Fake News Detector (Full UI + Auth + DB)
+# 🦠 PestisVeriteum - Fake News Detector (Modern UI + Auth + DB)
 # =============================================
 
 import streamlit as st
@@ -60,39 +60,67 @@ def load_model():
     return tokenizer, model, device
 
 # ------------------------------------------------------
-# CUSTOM CSS (Beautiful + Clean)
+# STYLING (Glassmorphism + Clean Design)
 # ------------------------------------------------------
+st.set_page_config(page_title="PestisVeriteum", page_icon="🦠", layout="centered")
+
 st.markdown("""
 <style>
 .stApp {
-    background: radial-gradient(circle at 10% 10%, #0f1724 0%, #071028 35%, #001320 100%);
-    color: #f2f2f2;
+    background: radial-gradient(circle at 10% 10%, #020617 0%, #0b1225 50%, #000814 100%);
+    color: #f5f5f5;
+    font-family: 'Segoe UI', sans-serif;
 }
+
 h1, h2, h3 {
-    color: #ff5a5a;
+    color: #ff6b6b;
     text-align: center;
-    font-family: 'Segoe UI';
+    letter-spacing: 1px;
 }
+
+div[data-testid="stSidebar"] {
+    background: rgba(5, 10, 25, 0.85);
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(255,255,255,0.1);
+}
+
 .stButton>button {
     background: linear-gradient(90deg, #ff5a5a, #ff7b00);
     color: white;
-    border-radius: 10px;
-    padding: 0.6em 1.2em;
+    border-radius: 12px;
+    padding: 0.6em 1.4em;
     border: none;
+    font-weight: 600;
+    transition: all 0.3s ease-in-out;
 }
 .stButton>button:hover {
+    transform: scale(1.03);
     background: linear-gradient(90deg, #ff7b00, #ff5a5a);
 }
-.sidebar .sidebar-content {
-    background-color: #0d1321;
+
+.stTextInput>div>div>input, textarea {
+    background: rgba(255,255,255,0.08) !important;
+    border-radius: 10px !important;
+    color: white !important;
+}
+
+.card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+    border-radius: 15px;
+    padding: 1.5em;
+    margin-top: 1em;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+footer {
+    text-align: center;
+    color: #aaa;
+    padding-top: 10px;
+    font-size: 0.9em;
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ------------------------------------------------------
-# PAGE CONFIG
-# ------------------------------------------------------
-st.set_page_config(page_title="PestisVeriteum", page_icon="🦠", layout="centered")
 
 # ------------------------------------------------------
 # SIDEBAR NAVIGATION
@@ -102,18 +130,18 @@ st.sidebar.title("🧭 Navigation")
 page = st.sidebar.radio("Go to", ["🏠 Home", "🧪 Detector", "ℹ️ About", "📬 Contact"])
 
 # ------------------------------------------------------
-# LOGIN / SIGNUP SYSTEM
+# AUTH SYSTEM
 # ------------------------------------------------------
 if "user" not in st.session_state:
     st.session_state.user = None
 
 if st.session_state.user is None:
-    st.sidebar.subheader("Login / Sign Up")
+    st.markdown("<h1>🧠 PestisVeriteum</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;color:#bfcde0;'>Next-Generation Fake News Detection AI</p>", unsafe_allow_html=True)
 
-    login_tab, signup_tab = st.sidebar.tabs(["🔐 Login", "🆕 Sign Up"])
+    tabs = st.tabs(["🔐 Login", "🆕 Sign Up"])
 
-    # --- Login tab
-    with login_tab:
+    with tabs[0]:
         username = st.text_input("Username", key="login_user")
         password = st.text_input("Password", type="password", key="login_pass")
         if st.button("Login"):
@@ -123,11 +151,11 @@ if st.session_state.user is None:
             if row and verify_password(password, row[0]):
                 st.session_state.user = username
                 st.success(f"Welcome back, {username}!")
+                st.experimental_rerun()
             else:
-                st.error("Invalid credentials.")
+                st.error("Invalid username or password.")
 
-    # --- Signup tab
-    with signup_tab:
+    with tabs[1]:
         new_user = st.text_input("New Username", key="new_user")
         new_pass = st.text_input("New Password", type="password", key="new_pass")
         if st.button("Sign Up"):
@@ -137,34 +165,30 @@ if st.session_state.user is None:
                 try:
                     conn.execute("INSERT INTO users VALUES (?, ?)", (new_user, hash_password(new_pass)))
                     conn.commit()
-                    st.success("Account created! Please log in.")
+                    st.success("✅ Account created! You can now log in.")
                 except:
-                    st.error("Username already exists.")
+                    st.error("❌ Username already exists.")
 
 else:
     st.sidebar.success(f"👤 Logged in as: {st.session_state.user}")
     if st.sidebar.button("Logout"):
         st.session_state.user = None
-        st.rerun()
+        st.experimental_rerun()
 
-# ------------------------------------------------------
-# MAIN CONTENT BASED ON NAVIGATION
-# ------------------------------------------------------
-if st.session_state.user:
-
-    # 🏠 HOME
+    # ------------------------------------------------------
+    # MAIN CONTENT
+    # ------------------------------------------------------
     if page == "🏠 Home":
         st.markdown("<h1>Welcome to PestisVeriteum</h1>", unsafe_allow_html=True)
         st.markdown("""
-        <p style='text-align:center;color:#cfd9e4;'>
-        The next-generation fake news detection AI.<br>
-        Enter any claim, and PestisVeriteum will instantly analyze its truthfulness
-        using a fine-tuned BERT model.<br><br>
+        <div class='card' style='text-align:center;'>
+        <p>The next-generation fake news detection AI.<br>
+        Enter any claim, and PestisVeriteum will instantly analyze its truthfulness using a fine-tuned BERT model.<br><br>
         🧠 <b>Trusted AI, built for truth.</b>
         </p>
+        </div>
         """, unsafe_allow_html=True)
 
-    # 🧪 DETECTOR
     elif page == "🧪 Detector":
         st.markdown("<h1>Fake News Detector</h1>", unsafe_allow_html=True)
         tokenizer, model, device = load_model()
@@ -174,8 +198,9 @@ if st.session_state.user:
             3: 'true', 4: 'barely-true', 5: 'pants-fire'
         }
 
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
         claim = st.text_area("Enter your claim:", height=120)
-        if st.button("Analyze"):
+        if st.button("🔍 Analyze"):
             if claim.strip() == "":
                 st.warning("Please type something first.")
             else:
@@ -187,29 +212,31 @@ if st.session_state.user:
                 pred_idx = torch.argmax(outputs.logits, dim=1).item()
                 label = label_mapping[pred_idx]
 
-                st.markdown(f"<h2 style='color:lime;'>Prediction: {label.upper()}</h2>", unsafe_allow_html=True)
+                st.markdown(f"<h3 style='color:lime;text-align:center;'>✅ Prediction: {label.upper()}</h3>", unsafe_allow_html=True)
 
                 conn.execute("INSERT INTO predictions VALUES (?, ?, ?, ?)",
                              (st.session_state.user, claim, label, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 conn.commit()
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # ℹ️ ABOUT
     elif page == "ℹ️ About":
         st.markdown("<h1>About PestisVeriteum</h1>", unsafe_allow_html=True)
         st.markdown("""
-        <div style='text-align:justify;'>
-        PestisVeriteum is a truth verification project built with modern deep learning tools.
-        It utilizes <b>BERT (Bidirectional Encoder Representations from Transformers)</b>
-        to classify claims into multiple truthfulness levels.<br><br>
-        <b>Mission:</b> Fight misinformation with AI.<br>
-        <b>Created by:</b> <i>PestisVeriteum Research Lab</i><br>
-        <b>Year:</b> 2025
+        <div class='card'>
+        <p>PestisVeriteum is a deep-learning-powered truth verification system that uses 
+        <b>BERT (Bidirectional Encoder Representations from Transformers)</b> to classify 
+        claims across multiple truthfulness levels.</p>
+        <ul>
+            <li><b>Mission:</b> Combat misinformation with AI.</li>
+            <li><b>Technology:</b> Transformer-based Natural Language Understanding.</li>
+            <li><b>Built by:</b> PestisVeriteum Research Lab, 2025.</li>
+        </ul>
         </div>
         """, unsafe_allow_html=True)
 
-    # 📬 CONTACT
     elif page == "📬 Contact":
         st.markdown("<h1>Contact Us</h1>", unsafe_allow_html=True)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
         name = st.text_input("Your Name")
         email = st.text_input("Your Email")
         msg = st.text_area("Your Message")
@@ -221,10 +248,6 @@ if st.session_state.user:
                              (name or "Anonymous", email, msg, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 conn.commit()
                 st.success("✅ Message sent successfully!")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # Footer
-    st.markdown("<hr><center>© 2025 PestisVeriteum. All rights reserved.</center>", unsafe_allow_html=True)
-else:
-    st.info("🔒 Please log in or sign up from the sidebar to continue.")
-
-
+    st.markdown("<footer>© 2025 PestisVeriteum. All rights reserved.</footer>", unsafe_allow_html=True)
