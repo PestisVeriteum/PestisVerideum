@@ -6,3 +6,7 @@ datasets
 scikit-learn
 accelerate
 sentencepiece
+sentence-transformers
+wikipedia
+faiss-cpu
+numpy
