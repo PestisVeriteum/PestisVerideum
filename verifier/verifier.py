@@ -1,28 +1,51 @@
 # verifier/verifier.py
+import wikipedia
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
 
-from transformers import pipeline
+# Load the FEVER-compatible model
+tokenizer = AutoTokenizer.from_pretrained("ynie/roberta-large-snli_mnli_fever_anli_R1_R2_R3-nli")
+model = AutoModelForSequenceClassification.from_pretrained("ynie/roberta-large-snli_mnli_fever_anli_R1_R2_R3-nli")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
-# Load the FEVER fine-tuned BERT model (use a public one)
-model_name = "mrm8488/bert-tiny-uncased-finetuned-fever"
-
-print("Loading verifier model...")
-verifier = pipeline("text-classification", model=model_name)
-
-def verify_claim(claim: str) -> dict:
+def verify_claim(claim, max_sentences=5):
     """
-    Verifies a claim using the fine-tuned FEVER model.
-    Returns a dictionary with label and confidence score.
+    Search Wikipedia for evidence and classify the claim as true, false, or unclear.
     """
-    result = verifier(claim)[0]
-    label = result["label"]
-    score = round(float(result["score"]), 3)
+    try:
+        search_results = wikipedia.search(claim, results=3)
+        evidence_texts = []
+        for title in search_results:
+            try:
+                summary = wikipedia.summary(title, sentences=max_sentences)
+                evidence_texts.append(summary)
+            except:
+                continue
 
-    # Convert model output to simple truth statement
-    if label.lower() in ["support", "true"]:
-        verdict = "True"
-    elif label.lower() in ["refute", "false"]:
-        verdict = "False"
-    else:
-        verdict = "Unclear"
+        if not evidence_texts:
+            return {"final_label": "unclear", "avg_score": 0.0}
 
-    return {"claim": claim, "label": verdict, "confidence": score}
+        entail_scores, contra_scores = [], []
+        for evidence in evidence_texts:
+            inputs = tokenizer(claim, evidence, return_tensors="pt", truncation=True, max_length=512).to(device)
+            with torch.no_grad():
+                outputs = model(**inputs)
+                probs = torch.nn.functional.softmax(outputs.logits, dim=1)
+                entail_scores.append(probs[0][0].item())  # entailment
+                contra_scores.append(probs[0][2].item())  # contradiction
+
+        avg_entail = sum(entail_scores) / len(entail_scores)
+        avg_contra = sum(contra_scores) / len(contra_scores)
+
+        if avg_entail > 0.6 and avg_entail > avg_contra:
+            label = "true"
+        elif avg_contra > 0.6 and avg_contra > avg_entail:
+            label = "false"
+        else:
+            label = "unclear"
+
+        return {"final_label": label, "avg_entail": avg_entail, "avg_contra": avg_contra}
+
+    except Exception as e:
+        return {"final_label": "unclear", "error": str(e)}
